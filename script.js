@@ -1,0 +1,169 @@
+// ---- floating petals ----
+  const petalField = document.getElementById('petals');
+  const petalSVG = (color) => `<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 0c2 3 4 4 4 7a4 4 0 1 1-8 0c0-3 2-4 4-7z" fill="${color}"/></svg>`;
+  const colors = ['#e6b8bd','#cda05f','#f3e6d8'];
+  function spawnPetals(n){
+    for(let i=0;i<n;i++){
+      const el = document.createElement('div');
+      el.className = 'petal';
+      el.style.left = Math.random()*100 + 'vw';
+      el.style.setProperty('--drift', (Math.random()*80-40) + 'px');
+      el.style.animationDuration = (7 + Math.random()*9) + 's';
+      el.style.animationDelay = (Math.random()*6) + 's';
+      el.style.width = el.style.height = (8 + Math.random()*10) + 'px';
+      el.innerHTML = petalSVG(colors[i % colors.length]);
+      petalField.appendChild(el);
+    }
+  }
+  spawnPetals(14);
+  // sparkles on cover
+  const cover = document.getElementById('cover');
+  for(let i=0;i<10;i++){
+    const s = document.createElement('div');
+    s.className='spark';
+    const size = 2 + Math.random()*3;
+    s.style.width = s.style.height = size+'px';
+    s.style.left = (10 + Math.random()*80) + '%';
+    s.style.top = (8 + Math.random()*55) + '%';
+    s.style.animationDuration = (2 + Math.random()*3) + 's';
+    s.style.animationDelay = (Math.random()*3) + 's';
+    cover.appendChild(s);
+  }
+
+  // ---- envelope open sequence ----
+  const deck = document.getElementById('deck');
+  const dots = document.getElementById('dots');
+  const sealBtn = document.getElementById('sealBtn');
+  sealBtn.addEventListener('click', () => {
+    if(sealBtn.dataset.done) return;
+    sealBtn.dataset.done = '1';
+    sealBtn.classList.add('cracking');
+    setTimeout(() => { cover.classList.add('open'); }, 380);
+    setTimeout(() => { cover.classList.add('open2'); }, 900);
+    setTimeout(() => {
+      cover.classList.add('hide');
+      deck.classList.add('show');
+      dots.classList.add('show');
+      spawnPetals(22);
+    }, 1500);
+  });
+
+  // ---- music toggle (visual only) ----
+  const vinyl = document.getElementById('vinyl');
+  const playBtn = document.getElementById('playBtn');
+  let playing = false;
+  playBtn.addEventListener('click', () => {
+    playing = !playing;
+    vinyl.classList.toggle('playing', playing);
+    playBtn.textContent = playing ? '❚❚ jeda animasi' : '🎨 putar animasi';
+  });
+
+  // ---- paging: native scroll-snap + fade-in via IntersectionObserver ----
+  const sections = [...document.querySelectorAll('#deck section')];
+  const dotBtns = [...document.querySelectorAll('#dots button')];
+  let current = 0;
+
+  function goTo(i){
+    if(i < 0 || i >= sections.length) return;
+    sections[i].scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  dotBtns.forEach(btn => btn.addEventListener('click', () => goTo(+btn.dataset.i)));
+
+  const sectionObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const idx = sections.indexOf(entry.target);
+      if(entry.isIntersecting && entry.intersectionRatio > 0.55){
+        entry.target.classList.add('active');
+        current = idx;
+        dotBtns.forEach(b => b.classList.remove('active'));
+        if(dotBtns[idx]) dotBtns[idx].classList.add('active');
+      }
+    });
+  }, {root: deck, threshold: [0, 0.55, 1]});
+  sections.forEach(s => sectionObserver.observe(s));
+
+  window.addEventListener('keydown', (e) => {
+    if(cover && !cover.classList.contains('hide')) return;
+    if(e.key === 'ArrowDown' || e.key === 'PageDown'){ e.preventDefault(); goTo(current+1); }
+    if(e.key === 'ArrowUp' || e.key === 'PageUp'){ e.preventDefault(); goTo(current-1); }
+  });
+
+  // ---- clicking the scroll hint chevron also advances
+  document.querySelectorAll('.scroll-hint').forEach(hint => {
+    hint.style.cursor = 'pointer';
+    hint.addEventListener('click', () => goTo(current+1));
+  });
+
+  // ---- filmstrip: smooth drag-to-scroll with momentum (mouse + touch) ----
+  const filmstrip = document.getElementById('filmstrip');
+  if(filmstrip){
+    let isDown = false, startX = 0, startScroll = 0;
+    let lastX = 0, lastT = 0, velocity = 0;
+    let momentumId = null;
+
+    function stopMomentum(){ if(momentumId){ cancelAnimationFrame(momentumId); momentumId = null; } }
+
+    function pointerDown(x){
+      stopMomentum();
+      isDown = true;
+      startX = x; startScroll = filmstrip.scrollLeft;
+      lastX = x; lastT = performance.now();
+      velocity = 0;
+      filmstrip.classList.add('dragging');
+    }
+    function pointerMove(x){
+      if(!isDown) return;
+      const dx = x - startX;
+      filmstrip.scrollLeft = startScroll - dx;
+      const now = performance.now();
+      const dt = now - lastT || 16;
+      velocity = (x - lastX) / dt; // px per ms
+      lastX = x; lastT = now;
+    }
+    function pointerUp(){
+      if(!isDown) return;
+      isDown = false;
+      filmstrip.classList.remove('dragging');
+      // momentum glide
+      let v = velocity;
+      function glide(){
+        if(Math.abs(v) < 0.02){ momentumId = null; return; }
+        filmstrip.scrollLeft -= v * 16;
+        v *= 0.93;
+        momentumId = requestAnimationFrame(glide);
+      }
+      stopMomentum();
+      momentumId = requestAnimationFrame(glide);
+    }
+
+    // mouse (desktop drag)
+    filmstrip.addEventListener('mousedown', (e) => { pointerDown(e.clientX); e.preventDefault(); });
+    window.addEventListener('mousemove', (e) => { if(isDown) pointerMove(e.clientX); });
+    window.addEventListener('mouseup', pointerUp);
+    filmstrip.addEventListener('mouseleave', () => { if(isDown) pointerUp(); });
+
+    // touch (adds momentum on top of native scroll; native handles the live drag)
+    filmstrip.addEventListener('touchstart', (e) => {
+      stopMomentum();
+      lastX = e.touches[0].clientX; lastT = performance.now(); velocity = 0;
+    }, {passive:true});
+    filmstrip.addEventListener('touchmove', (e) => {
+      const x = e.touches[0].clientX;
+      const now = performance.now();
+      const dt = now - lastT || 16;
+      velocity = (x - lastX) / dt;
+      lastX = x; lastT = now;
+    }, {passive:true});
+    filmstrip.addEventListener('touchend', () => {
+      let v = velocity;
+      function glide(){
+        if(Math.abs(v) < 0.02){ momentumId = null; return; }
+        filmstrip.scrollLeft -= v * 16;
+        v *= 0.93;
+        momentumId = requestAnimationFrame(glide);
+      }
+      stopMomentum();
+      momentumId = requestAnimationFrame(glide);
+    }, {passive:true});
+  }
